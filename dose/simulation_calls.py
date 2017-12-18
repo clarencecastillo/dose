@@ -51,14 +51,14 @@ def simulation_core(sim_functions, sim_parameters, eb, populations, world):
         - SIMULATION_START:
             - time_start: datetime = simulation start time
             - directory: String = simulation file path directory
-            - max_generations: int = maximum generations
-            - generation_count: int = starting generation
+            - max_generation: int = maximum generations
+            - generation: int = starting generation
         - GENERATION_WORLD_UPDATE:
             - world: dose_world.World = world object
-            - generation_count: int = current generation
+            - generation: int = current generation
         - GENERATION_POPULATIONS_UPDATE:
             - populations: dict = dictionary of population objects
-            - generation_count: int = current generation
+            - generation: int = current generation
         - SIMULATION_END:
             - time_end: datetime = simulation end time
     
@@ -143,8 +143,8 @@ def simulation_core(sim_functions, sim_parameters, eb, populations, world):
     eb.publish(events.SIMULATION_START, {
         'time_start': time_start,
         'directory': directory,
-        'max_generations': max_generations,
-        'generation_count': generation_count
+        'max_generation': max_generations,
+        'generation': generation_count
     })
 
     while generation_count < max_generations:
