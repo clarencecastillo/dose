@@ -11,9 +11,11 @@ examples/*.db
 *.eco
 build/
 dist/
-dose.egg-info/
+*.egg-info
 *.gz
 *.egg
 module-documentation/
 examples/*_turtle.py
 examples/*.svg
+
+\.idea/
