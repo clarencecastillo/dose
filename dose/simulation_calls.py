@@ -23,11 +23,10 @@ except ImportError:
 import dose_world
 import genetic
 import ragaraja, register_machine
+import events
 
 from database_calls import connect_database, db_log_simulation_parameters
 from database_calls import db_report
-
-from . import events
 
 
 def simulation_core(sim_functions, sim_parameters, eb, populations, world):
