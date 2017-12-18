@@ -27,7 +27,9 @@ import ragaraja, register_machine
 from database_calls import connect_database, db_log_simulation_parameters
 from database_calls import db_report
 
-def simulation_core(sim_functions, sim_parameters, Populations, World):
+from . import events
+
+def simulation_core(sim_functions, sim_parameters, eb, populations, world):
     '''
     Sequential ecological cell DOSE simulator.
     
@@ -44,122 +46,169 @@ def simulation_core(sim_functions, sim_parameters, Populations, World):
         - Writing final results into results text file
         - Close logging database (if used)
         - Copy simulation script into simulation file directory
+
+    Events available for subscription and data:
+        - SIMULATION_START:
+            - time_start: datetime = simulation start time
+            - directory: String = simulation file path directory
+            - max_generations: int = maximum generations
+            - generation_count: int = starting generation
+        - GENERATION_WORLD_UPDATE:
+            - world: dose_world.World = world object
+            - generation_count: int = current generation
+        - GENERATION_POPULATIONS_UPDATE:
+            - populations: dict = dictionary of population objects
+            - generation_count: int = current generation
+        - SIMULATION_END:
+            - time_end: datetime = simulation end time
     
     @param sim_functions: implemented simulation functions (see 
     dose.dose_functions)
     @param sim_parameters: simulation parameters dictionary (see Examples)
-    @param Populations: dictionary of population objects
-    @param World: dose_world.World object
+    @param eb: An instance of dose.event_broker
+    @param populations: dictionary of population objects
+    @param world: dose_world.World object
     '''
-    time_start = '-'.join([str(datetime.utcnow()).split(' ')[0],
-                           str(time())])
-    print('Creating simulation file directories...')
-    directory ='_'.join([sim_parameters["simulation_name"],time_start])
-    directory = os.sep.join([os.getcwd(), 'Simulations', directory]) 
-    directory = directory + os.sep
-    if not os.path.exists(directory): os.makedirs(directory)
-    print('Adding simulation directory to simulation parameters...')
+
+    eb.log('Started simulation preparation')
+
+    time_start = datetime.utcnow()
+    time_start_str = '-'.join([str(time_start).split(' ')[0], str(time())])
+
+    eb.log('Creating simulation file directories')
+    directory = '_'.join([sim_parameters["simulation_name"], time_start_str])
+    directory = os.sep.join([os.getcwd(), 'Simulations', directory]) + os.sep
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    eb.log('Adding simulation directory to simulation parameters')
     sim_parameters["directory"] = directory
-    print('Adding starting time to simulation parameters...')
-    sim_parameters["starting_time"] = time_start
+
+    eb.log('Adding starting time to simulation parameters')
+    sim_parameters["starting_time"] = time_start_str
+
     sim_functions = sim_functions()
+
+    eb.log('Activating ragaraja version: ' + str(sim_parameters["ragaraja_version"]))
     if sim_parameters["ragaraja_version"] == 0:
-        print('Activating ragaraja version: 0...')
-        ragaraja.activate_version(sim_parameters["ragaraja_version"],
-                                  sim_parameters["ragaraja_instructions"])
+        ragaraja.activate_version(sim_parameters["ragaraja_version"], sim_parameters["ragaraja_instructions"])
     else:
-        print('Activating ragaraja version: ' + \
-            str(sim_parameters["ragaraja_version"]) + '...')
         ragaraja.activate_version(sim_parameters["ragaraja_version"])
-    if "database_file" in sim_parameters and \
-        "database_logging_frequency" in sim_parameters: 
-        print('Connecting to database file: ' + \
-            sim_parameters["database_file"] + '...')
+
+    con = None
+    cur = None
+    if "database_file" in sim_parameters and "database_logging_frequency" in sim_parameters:
+        eb.log('Connecting to database file: ' + sim_parameters["database_file"])
         (con, cur) = connect_database(None, sim_parameters)
-        print('Logging simulation parameters to database file...')
+        eb.log('Logging simulation parameters to database file')
         (con, cur) = db_log_simulation_parameters(con, cur, sim_parameters)
-    for pop_name in Populations:
-        print('\nPreparing population: ' + pop_name + ' for simulation...')
-        if 'sim_folder' in sim_parameters or \
-            'database_source' in sim_parameters:
-            print('Calculating final generation count...')
-            max = sim_parameters["rev_start"] \
-                [sim_parameters["population_names"].index(pop_name)] + \
+
+    max_generations = None
+    generation_count = None
+    for pop_name in populations:
+        eb.log('Preparing population: ' + pop_name + ' for simulation')
+        if 'sim_folder' in sim_parameters or 'database_source' in sim_parameters:
+            eb.log('Calculating final generation count')
+            max_generations = sim_parameters["rev_start"][sim_parameters["population_names"].index(pop_name)] + \
                 sim_parameters["extend_gen"]
-            print('Updating generation count from previous simulation...')
+            eb.log('Updating generation count from previous simulation')
             generation_count = sim_parameters["rev_start"][0]
         else:
-            print('Deploying population in World entity...')
+            eb.log('Deploying population in World entity')
             if sim_parameters["deployment_code"] == 0:
-                print('Executing user defined deployment scheme...')
-                deploy_0(sim_parameters, Populations, pop_name, World)      
+                eb.log('Executing user defined deployment scheme')
+                deploy_0(sim_parameters, populations, pop_name, world)
             elif sim_parameters["deployment_code"] == 1:
-                print('Executing deployment code 1: Single eco-cell deployment...')
-                deploy_1(sim_parameters, Populations, pop_name, World)  
+                eb.log('Executing deployment code 1: Single eco-cell deployment')
+                deploy_1(sim_parameters, populations, pop_name, world)
             elif sim_parameters["deployment_code"] == 2:
-                print('Executing deployment code 2: Random eco-cell deployment...')
-                deploy_2(sim_parameters, Populations, pop_name, World)  
+                eb.log('Executing deployment code 2: Random eco-cell deployment')
+                deploy_2(sim_parameters, populations, pop_name, world)
             elif sim_parameters["deployment_code"] == 3:
-                print('Executing deployment code 3: Even eco-cell deployment...')
-                deploy_3(sim_parameters, Populations, pop_name, World)  
+                eb.log('Executing deployment code 3: Even eco-cell deployment')
+                deploy_3(sim_parameters, populations, pop_name, world)
             elif sim_parameters["deployment_code"] == 4:
-                print('Executing deployment code 4: Centralized eco-cell deployment...')
-                deploy_4(sim_parameters, Populations, pop_name, World)
-            print('Adding maximum generations to simulation parameters...')
-            max = sim_parameters["maximum_generations"]
+                eb.log('Executing deployment code 4: Centralized eco-cell deployment')
+                deploy_4(sim_parameters, populations, pop_name, world)
+            max_generations = sim_parameters["maximum_generations"]
             generation_count = 0
-        print('Writing simulation parameters into txt file report...')
+
+        eb.log('Writing simulation parameters into txt file report')
         write_parameters(sim_parameters, pop_name)
-        print('Updating generation count...')
-        Populations[pop_name].generation = generation_count
-    print('\nSimulation preparation complete...')
-    while generation_count < max:
-        generation_count = generation_count + 1
-        sim_functions.ecoregulate(World)
-        eco_cell_iterator(World, sim_parameters,
-                          sim_functions.update_ecology)
-        eco_cell_iterator(World, sim_parameters,
-                          sim_functions.update_local)
-        eco_cell_iterator(World, sim_parameters, sim_functions.report)
-        bury_world(sim_parameters, World, generation_count)
-        for pop_name in Populations:
+
+        eb.log('Updating generation count')
+        populations[pop_name].generation = generation_count
+
+    eb.log('Simulation preparation complete')
+    eb.publish(events.SIMULATION_START, {
+        'time_start': time_start,
+        'directory': directory,
+        'max_generations': max_generations,
+        'generation_count': generation_count
+    })
+
+    while generation_count < max_generations:
+        generation_count += 1
+
+        sim_functions.ecoregulate(world)
+        eco_cell_iterator(world, sim_parameters, sim_functions.update_ecology)
+        eco_cell_iterator(world, sim_parameters, sim_functions.update_local)
+        eco_cell_iterator(world, sim_parameters, sim_functions.report)
+        eb.publish(events.GENERATION_WORLD_UPDATE, {
+            'world': world,
+            'generation': generation_count
+        })
+
+        if generation_count % int(sim_parameters["eco_buried_frequency"]) == 0:
+            bury_world(sim_parameters, world, generation_count)
+
+        for pop_name in populations:
             if sim_parameters["interpret_chromosome"]:
-                interpret_chromosome(sim_parameters, Populations, 
-                                     pop_name, World)
-            report_generation(sim_parameters, Populations, pop_name, 
-                              sim_functions, generation_count)
-            sim_functions.organism_movement(Populations, pop_name, World)
-            sim_functions.organism_location(Populations, pop_name, World)
-        if "database_file" in sim_parameters and \
-            "database_logging_frequency" in sim_parameters and \
-            generation_count % \
-            int(sim_parameters["database_logging_frequency"]) == 0: 
-                (con, cur) = db_report(con, cur, sim_functions,
-                                   sim_parameters["starting_time"],
-                                   Populations, World, generation_count)
-        print('Generation ' + str(generation_count) + ' complete...')
-    print('\nClosing simulation results...')
-    for pop_name in Populations: close_results(sim_parameters, pop_name)
-    if "database_file" in sim_parameters and \
-        "database_logging_frequency" in sim_parameters:
-        print('Committing logged data into database file...') 
+                interpret_chromosome(sim_parameters, populations, pop_name, world)
+
+            report_generation(sim_parameters, populations, pop_name, sim_functions, generation_count)
+            sim_functions.organism_movement(populations, pop_name, world)
+            sim_functions.organism_location(populations, pop_name, world)
+
+        eb.publish(events.GENERATION_POPULATIONS_UPDATE, {
+            'populations': populations,
+            'generation': generation_count
+        })
+
+        if "database_file" in sim_parameters and "database_logging_frequency" in sim_parameters and \
+                generation_count % int(sim_parameters["database_logging_frequency"]) == 0:
+                (con, cur) = db_report(con, cur, sim_functions, sim_parameters["starting_time"], populations, world,
+                                       generation_count)
+
+        eb.log('Generation ' + str(generation_count) + ' complete')
+
+    eb.log('Closing simulation results')
+    for pop_name in populations:
+        close_results(sim_parameters, pop_name)
+
+    if "database_file" in sim_parameters and "database_logging_frequency" in sim_parameters:
+        eb.log('Committing logged data into database file and terminating database connection')
         con.commit()
-        print('Terminating database connection...') 
         con.close()
-    print('Copying simulation file script to simulation results directory...')
+
+    eb.log('Copying simulation file script to simulation results directory')
 
     #DV on my system, the inspect.stack()[2][1] value returns the full
-    #   path to the file ('/home/douwe/scr/.../scriptname.py'). 
-    #   The end result is an error for the original code, below, as the 
+    #   path to the file ('/home/douwe/scr/.../scriptname.py').
+    #   The end result is an error for the original code, below, as the
     #   copyfile command is pointed to a wrong location: the directory
     #   is added twice. This might be Py3, or Windows functionality.
     #   With using the os.path module, this should give an OS-independent
     #   way of extracting the basename and linking to the directory.
     sim_script_basename = os.path.basename(inspect.stack()[2][1])
-    copyfile(inspect.stack()[2][1], 
+    copyfile(inspect.stack()[2][1],
 #DV_original#             sim_parameters['directory'] + inspect.stack()[2][1])
              os.path.join(sim_parameters['directory'], sim_script_basename))
-    print('\nSimulation ended...')
+
+    eb.log('Simulation ended')
+    eb.publish(events.SIMULATION_END, {
+        'time_end': datetime.utcnow()
+    })
 
 def coordinates(location):
     '''
@@ -222,12 +271,8 @@ def spawn_populations(sim_parameters):
     @return: dictionary of population objects with population name as key
     '''
     temp_Populations = {}
-    print(' - Accessing population names...')
     for pop_name in sim_parameters["population_names"]:
-        print(' - Constructing population: ' + pop_name + '...')
-        temp_Populations[pop_name] = \
-            genetic.population_constructor(sim_parameters)
-        print(' - Updating organism identity and deme status...')
+        temp_Populations[pop_name] = genetic.population_constructor(sim_parameters)
         for individual in temp_Populations[pop_name].agents:
             individual.generate_name()
             individual.status['deme'] = pop_name
@@ -403,25 +448,31 @@ def interpret_chromosome(sim_parameters, Populations, pop_name, World):
     @param World: dose_world.World object
     @return: none
     '''
-    array = [0] * sim_parameters["max_tape_length"]
+
+    chromosome = None
+
     for i in range(len(Populations[pop_name].agents)):
+
         individual = Populations[pop_name].agents[i]
         location = individual.status['location']
         (x,y,z) = coordinates(location)
+
         if sim_parameters["clean_cell"]:
-            array = [0] * sim_parameters["max_tape_length"]
+            chromosome = [0] * sim_parameters["max_tape_length"]
         else:
-            array = Populations[pop_name].agents[i].status['blood']
-            if array == None: 
-                array = [0] * sim_parameters["max_tape_length"]
+            chromosome = Populations[pop_name].agents[i].status['blood']
+            if chromosome == None:
+                chromosome = [0] * sim_parameters["max_tape_length"]
+
         for chromosome_count in range(len(individual.genome)):
             inputdata = World.ecosystem[x][y][z]['local_input']
             output = World.ecosystem[x][y][z]['local_output']
             source = ''.join(individual.genome[chromosome_count].sequence)
-            array = Populations[pop_name].agents[i].status['blood']
-            try: (array, apointer, inputdata, output, source, spointer) = \
+            chromosome = Populations[pop_name].agents[i].status['blood']
+            try:
+                (chromosome, apointer, inputdata, output, source, spointer) = \
                 register_machine.interpret(source, ragaraja.ragaraja, 3,
-                                           inputdata, array,
+                                           inputdata, chromosome,
                                            sim_parameters["max_tape_length"],
                                            sim_parameters["max_codon"])
             except Exception as e: 
@@ -429,8 +480,9 @@ def interpret_chromosome(sim_parameters, Populations, pop_name, World):
                     str(chromosome_count), str(e)])
                 Populations[pop_name].agents[i]. \
                     status['chromosome_error'] = error_msg
-                Populations[pop_name].agents[i].status['blood'] = array
-            Populations[pop_name].agents[i].status['blood'] = array
+                Populations[pop_name].agents[i].status['blood'] = chromosome
+
+            Populations[pop_name].agents[i].status['blood'] = chromosome
             World.ecosystem[x][y][z]['temporary_input'] = inputdata
             World.ecosystem[x][y][z]['temporary_output'] = output
 
@@ -502,13 +554,13 @@ def bury_world(sim_parameters, World, generation_count):
     @param World: dose_world.World object
     @param generation_count: current generation count for file name generation
     '''
-    if generation_count % int (sim_parameters["eco_buried_frequency"]) == 0:
-       filename = '%s%s_gen%s.eco' % (sim_parameters["directory"], 
-                                      sim_parameters["simulation_name"], 
-                                      str(generation_count))
-       f = open(filename, 'wb')
-       pickle.dump(World, f)
-       f.close()
+
+    filename = '%s%s_gen%s.eco' % (sim_parameters["directory"],
+                                  sim_parameters["simulation_name"],
+                                  str(generation_count))
+    f = open(filename, 'wb')
+    pickle.dump(World, f)
+    f.close()
 
 def excavate_world(eco_file):
     '''

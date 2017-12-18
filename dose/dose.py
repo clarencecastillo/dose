@@ -335,6 +335,25 @@ class dose_functions():
         '''
         raise NotImplementedError
 
+class event_broker():
+
+    def __init__(self):
+        self.observers = {}
+
+    def log(self, message):
+        print(message)
+
+    def publish(self, event, data):
+        if event in self.observers:
+            for callback in self.observers[event]:
+                callback(data)
+
+    def subscribe(self, event, callback):
+        if event in self.observers:
+            self.observers[event].append(callback)
+        else:
+            self.observers[event] = [callback]
+
 def database_report_populations(con, cur, start_time, 
                                 Populations, generation_count):
     '''
@@ -540,67 +559,72 @@ def filter_status(status_key, condition, agents):
         and float(individual.status[status_key]) < float(condition[1]) + 0.01]
     return extract
 
-def revive_simulation(rev_parameters, sim_functions):
-    print('\n[' + rev_parameters["simulation_name"].upper() + ' REVIVAL SIMULATION]')
-    Populations = {}
+def revive_simulation(rev_parameters, sim_functions, eb = event_broker()):
+
+    eb.log("[" + rev_parameters["simulation_name"].upper() + " REVIVAL SIMULATION]")
+
+    populations = {}
+    world = None
+    eb.log("Accessing simulation files directory")
     if "sim_folder" in rev_parameters:
-        print('Accessing simulation files directory...') 
-        print('Excavating World entity: ' + rev_parameters['eco_file'] + '...')
-        World = excavate_world(rev_parameters['sim_folder'] + \
-                               rev_parameters['eco_file'])
-        print('Updating parameters with World dimensions...')
-        rev_parameters["world_z"] = len(World.ecosystem[0][0][0])
-        rev_parameters["world_y"] = len(World.ecosystem[0][0])
-        rev_parameters["world_x"] = len(World.ecosystem[0])
+
+        eb.log('Excavating World entity: ' + rev_parameters['eco_file'])
+        world = excavate_world(rev_parameters['sim_folder'] + rev_parameters['eco_file'])
+
+        eb.log('Updating parameters with World dimensions')
+        rev_parameters["world_z"] = len(world.ecosystem[0][0][0])
+        rev_parameters["world_y"] = len(world.ecosystem[0][0])
+        rev_parameters["world_x"] = len(world.ecosystem[0])
+
         for i in range(len(rev_parameters["pop_files"])):
-            print('\nReviving population file: ' + \
-                rev_parameters["pop_files"][i] + '...')
-            pop_file = rev_parameters["sim_folder"] + \
-                rev_parameters["pop_files"][i]
-            Populations[rev_parameters["population_names"][i]] = \
-                revive_population(pop_file)
-        print('\nUpdating revival generation start in simulation parameters...')
-        rev_parameters["rev_start"] = [Populations[pop_name].generation 
-                                       for pop_name in Populations]
+            eb.log('Reviving population file: ' + rev_parameters["pop_files"][i])
+            pop_file = rev_parameters["sim_folder"] + rev_parameters["pop_files"][i]
+            populations[rev_parameters["population_names"][i]] = revive_population(pop_file)
+
+        eb.log('Updating revival generation start in simulation parameters')
+        rev_parameters["rev_start"] = [populations[pop_name].generation for pop_name in populations]
+
     elif "database_source" in rev_parameters:
-        print('Constructing database directory...')
-        dbpath = os.sep.join([os.getcwd(), 
-                              'Simulations', 
-                              rev_parameters["database_source"]])
-        print('Connecting to database file: ' + \
-            rev_parameters["database_source"] + '...')
+
+        eb.log('Constructing database directory')
+        dbpath = os.sep.join([os.getcwd(), 'Simulations', rev_parameters["database_source"]])
+
+        eb.log('Connecting to database file: ' + rev_parameters["database_source"])
         (con, cur) = connect_database(dbpath, None)
+
         if rev_parameters["simulation_time"] == 'default':
-            print('Acquiring simulation starting time...')
+            eb.log('Acquiring simulation starting time')
             rev_parameters["simulation_time"] = db_list_simulations(cur)[0][0]
-        print('Reconstructing old simulation parameters...')
-        temp_parameters = db_reconstruct_simulation_parameters(cur, 
-                                    rev_parameters["simulation_time"])
-        print('Assimilating old simulation parameters with new simulation parameters...')
+
+        eb.log('Reconstructing old simulation parameters')
+        temp_parameters = db_reconstruct_simulation_parameters(cur, rev_parameters["simulation_time"])
+
+        eb.log('Assimilating old simulation parameters with new simulation parameters')
         for key in temp_parameters:
             if key not in rev_parameters:
                 rev_parameters[key] = temp_parameters[key]
-        print('Reconstructing World entity...')
-        World = db_reconstruct_world(cur, rev_parameters["simulation_time"], 
-                                     rev_parameters["rev_start"][0])
-        print('\nUpdating population names parameter...')
-        for pop_name in rev_parameters["population_names"]:
-            print('Reconstructing population: ' + pop_name + '...')
-            Populations[pop_name] = db_reconstruct_population(cur, 
-                              rev_parameters["simulation_time"], pop_name, 
-            rev_parameters["rev_start"][rev_parameters["population_names"].index(pop_name)])
-        print('Terminating database connection...')
-        con.close()
-    print('Updating last generation revival and population size simulation parameters...')
-    rev_parameters["rev_finish"] = [(Populations[pop_name].generation + \
-                                     rev_parameters["extend_gen"]) 
-                                    for pop_name in Populations]
-    rev_parameters["rev_pop_size"] = [len(Populations[pop_name].agents) 
-                                      for pop_name in Populations]
-    print('\nStarting simulation core...')
-    simulation_core(sim_functions, rev_parameters, Populations, World)
 
-def simulate(sim_parameters, sim_functions):
+        eb.log('Reconstructing World entity')
+        world = db_reconstruct_world(cur, rev_parameters["simulation_time"], rev_parameters["rev_start"][0])
+
+        eb.log('Updating population names parameter')
+        for pop_name in rev_parameters["population_names"]:
+            eb.log('Reconstructing population: ' + pop_name)
+            populations[pop_name] = db_reconstruct_population(cur, rev_parameters["simulation_time"], pop_name,
+                                                              rev_parameters["rev_start"][rev_parameters
+                                                              ["population_names"].index(pop_name)])
+        eb.log('Terminating database connection')
+        con.close()
+
+    eb.log('Updating last generation revival and population size simulation parameters')
+    rev_parameters["rev_finish"] = [(populations[pop_name].generation + rev_parameters["extend_gen"])
+                                    for pop_name in populations]
+    rev_parameters["rev_pop_size"] = [len(populations[pop_name].agents) for pop_name in populations]
+
+    eb.log('Starting simulation core')
+    simulation_core(sim_functions, rev_parameters, populations, world)
+
+def simulate(sim_parameters, sim_functions, eb = event_broker()):
     '''
     Function called by simulation to run the actual simulation based on a 
     set of parameters and functions.
@@ -731,20 +755,21 @@ def simulate(sim_parameters, sim_functions):
     @param sim_parameters: Dictionary of simulation parameters
     @param sim_functions: A class inherited from dose.dose_functions
     class to implement all the needed simulation functions.
+    @param eb: An instance of dose.event_broker
     '''
-    print('\n[' + sim_parameters["simulation_name"].upper() + ' SIMULATION]')
+
+    eb.log("[" + sim_parameters["simulation_name"].upper() + " SIMULATION]")
+
     if "initial_chromosome" not in sim_parameters:
-        print('Adding initial chromosome to simulation parameters...')
-        sim_parameters["initial_chromosome"] = ['0'] * \
-                                        sim_parameters["chromosome_size"]
-    print('Adding deployment scheme to simulation parameters...')
+        eb.log('Adding initial chromosome to simulation parameters')
+        sim_parameters["initial_chromosome"] = ['0'] * sim_parameters["chromosome_size"]
+
+    eb.log('Adding deployment scheme to simulation parameters')
     sim_parameters["deployment_scheme"] = sim_functions.deployment_scheme
-    print('Constructing World entity...')
-    World = dose_world.World(sim_parameters["world_x"],
-                             sim_parameters["world_y"],
-                             sim_parameters["world_z"])
-    print('Spawning populations...')
-    Populations = spawn_populations(sim_parameters)
-    print('\nStarting simulation core...')
-    simulation_core(sim_functions, sim_parameters, Populations, World)
-    
+
+    eb.log('Constructing World entity')
+    world = dose_world.World(sim_parameters["world_x"], sim_parameters["world_y"], sim_parameters["world_z"])
+    eb.log('Spawning populations')
+    populations = spawn_populations(sim_parameters)
+    eb.log('Starting simulation core')
+    simulation_core(sim_functions, sim_parameters, eb, populations, world)
