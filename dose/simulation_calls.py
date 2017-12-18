@@ -618,16 +618,15 @@ def write_parameters(sim_parameters, pop_name):
     @return: none
     '''
     f = open(('%s%s_%s.result.txt' % (sim_parameters["directory"], sim_parameters["simulation_name"], pop_name)), 'a')
-    f.write("SIMULATION: %s \n" + ("-" * 70) % sim_parameters["simulation_name"])
-    if ('database_source' in sim_parameters) or  ('sim_folder' in sim_parameters):
-        f.write("SIMULATION REVIVAL STARTED: %s\n\n" % \
-                sim_parameters["starting_time"])
+    f.write("SIMULATION: %s \n%s" % (sim_parameters["simulation_name"], "-" * 70))
+    if ('database_source' in sim_parameters) or ('sim_folder' in sim_parameters):
+        f.write("SIMULATION REVIVAL STARTED: %s\n\n" % sim_parameters["starting_time"])
     else:
         f.write("SIMULATION STARTED: %s\n\n" % sim_parameters["starting_time"])
     for key in sim_parameters:
         if key not in ('deployment_scheme', 'directory', 'sim_folder'):
             f.write("%s : %s\n" % (key, sim_parameters[key]))
-    f.write("\n\nREPORT\n" + + ("-" * 70))
+    f.write("\n\nREPORT\n" + ("-" * 70))
 
 
 def close_results(sim_parameters, pop_name):
