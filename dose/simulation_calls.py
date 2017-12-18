@@ -29,6 +29,7 @@ from database_calls import db_report
 
 from . import events
 
+
 def simulation_core(sim_functions, sim_parameters, eb, populations, world):
     '''
     Sequential ecological cell DOSE simulator.
@@ -193,22 +194,23 @@ def simulation_core(sim_functions, sim_parameters, eb, populations, world):
 
     eb.log('Copying simulation file script to simulation results directory')
 
-    #DV on my system, the inspect.stack()[2][1] value returns the full
-    #   path to the file ('/home/douwe/scr/.../scriptname.py').
-    #   The end result is an error for the original code, below, as the
-    #   copyfile command is pointed to a wrong location: the directory
-    #   is added twice. This might be Py3, or Windows functionality.
-    #   With using the os.path module, this should give an OS-independent
-    #   way of extracting the basename and linking to the directory.
+    # DV on my system, the inspect.stack()[2][1] value returns the full
+    # path to the file ('/home/douwe/scr/.../scriptname.py').
+    # The end result is an error for the original code, below, as the
+    # copyfile command is pointed to a wrong location: the directory
+    # is added twice. This might be Py3, or Windows functionality.
+    # With using the os.path module, this should give an OS-independent
+    # way of extracting the basename and linking to the directory.
     sim_script_basename = os.path.basename(inspect.stack()[2][1])
     copyfile(inspect.stack()[2][1],
-#DV_original#             sim_parameters['directory'] + inspect.stack()[2][1])
+            # DV_original
+            # sim_parameters['directory'] + inspect.stack()[2][1])
              os.path.join(sim_parameters['directory'], sim_script_basename))
-
     eb.log('Simulation ended')
     eb.publish(events.SIMULATION_END, {
         'time_end': datetime.utcnow()
     })
+
 
 def coordinates(location):
     '''
@@ -218,10 +220,12 @@ def coordinates(location):
     data type
     @return: location of ecological cell as (x,y,z)
     '''
+
     x = location[0]
     y = location[1]
     z = location[2]
     return (x,y,z)
+
 
 def adjacent_cells(sim_parameters, location):
     '''
@@ -261,6 +265,7 @@ def adjacent_cells(sim_parameters, location):
         temp_cells.remove(location)
     return [tuple(location) for location in temp_cells]
 
+
 def spawn_populations(sim_parameters):
     '''
     Initializing starting population(s) for a simulation. Each organism 
@@ -278,25 +283,27 @@ def spawn_populations(sim_parameters):
             individual.status['deme'] = pop_name
     return temp_Populations
 
-def eco_cell_iterator(World, sim_parameters, function):
+
+def eco_cell_iterator(world, sim_parameters, callback):
     '''
     Generic caller to call any function to be executed in each ecological 
     cell in sequence.
     
-    @param World: dose_world.World object
+    @param world: dose_world.World object
     @param sim_parameters: simulation parameters dictionary (see Examples)
-    @param function: function to be executed
+    @param callback: function to be executed
     @return: none
     '''
     for x in range(sim_parameters["world_x"]):
         for y in range(sim_parameters["world_y"]):
             for z in range(sim_parameters["world_z"]):
-                if len(inspect.getargspec(function)[0]) == 5:
-                    function(World, x, y, z)
+                if len(inspect.getargspec(callback)[0]) == 5:
+                    callback(world, x, y, z)
                 else:
-                    function(World)
+                    callback(world)
 
-def deploy_0(sim_parameters, Populations, pop_name, World):
+
+def deploy_0(sim_parameters, populations, pop_name, world):
     '''
     Organism deployment scheme 0 - User defined deployment scheme. This is 
     called when "deployment_code" in simulation parameters = 0. User will 
@@ -304,14 +311,15 @@ def deploy_0(sim_parameters, Populations, pop_name, World):
     simulation parameters.
     
     @param sim_parameters: simulation parameters dictionary (see Examples)
-    @param Populations: dictionary of population objects
+    @param populations: dictionary of population objects
     @param pop_name: population name
-    @param World: dose_world.World object
+    @param world: dose_world.World object
     @return: none.
     '''
-    sim_parameters["deployment_scheme"](Populations, pop_name, World)
+    sim_parameters["deployment_scheme"](populations, pop_name, world)
 
-def deploy_1(sim_parameters, Populations, pop_name, World):
+
+def deploy_1(sim_parameters, populations, pop_name, world):
     '''
     Organism deployment scheme 1 - Single ecological cell deployment 
     scheme. This is called when "deployment_code" in simulation parameters 
@@ -320,20 +328,20 @@ def deploy_1(sim_parameters, Populations, pop_name, World):
     specified in "population_locations" of simulation parameters.
     
     @param sim_parameters: simulation parameters dictionary (see Examples)
-    @param Populations: dictionary of population objects
+    @param populations: dictionary of population objects
     @param pop_name: population name
-    @param World: dose_world.World object
+    @param world: dose_world.World object
     @return: none.
     '''
     position = sim_parameters["population_names"].index(pop_name)
-    locations = [location 
-        for location in sim_parameters["population_locations"][position]]
-    (x,y,z) = coordinates(locations[0])
-    World.ecosystem[x][y][z]['organisms'] = sim_parameters["population_size"]
-    for individual in Populations[pop_name].agents:
+    locations = [location for location in sim_parameters["population_locations"][position]]
+    (x, y, z) = coordinates(locations[0])
+    world.ecosystem[x][y][z]['organisms'] = sim_parameters["population_size"]
+    for individual in populations[pop_name].agents:
         individual.status['location'] = locations[0]
 
-def deploy_2(sim_parameters, Populations, pop_name, World):
+
+def deploy_2(sim_parameters, populations, pop_name, world):
     '''
     Organism deployment scheme 2 - Random deployment scheme. This is called 
     when "deployment_code" in simulation parameters = 2. In this scheme, 
@@ -342,26 +350,24 @@ def deploy_2(sim_parameters, Populations, pop_name, World):
     specified as "population_locations" of simulation parameters.
     
     @param sim_parameters: simulation parameters dictionary (see Examples)
-    @param Populations: dictionary of population objects
+    @param populations: dictionary of population objects
     @param pop_name: population name
-    @param World: dose_world.World object
+    @param world: dose_world.World object
     @return: none
     '''
     position = sim_parameters["population_names"].index(pop_name)
-    locations = [location 
-        for location in sim_parameters["population_locations"][position]]
-    for individual in Populations[pop_name].agents:
+    locations = [location for location in sim_parameters["population_locations"][position]]
+    for individual in populations[pop_name].agents:
             location = random.choice(locations)
-            (x,y,z) = coordinates(location)
-            while World.ecosystem[x][y][z]['organisms'] >= \
-                sim_parameters["eco_cell_capacity"]:
+            (x, y, z) = coordinates(location)
+            while world.ecosystem[x][y][z]['organisms'] >= sim_parameters["eco_cell_capacity"]:
                 location = random.choice(locations)
-                (x,y,z) = coordinates(location)
-            World.ecosystem[x][y][z]['organisms'] = \
-                World.ecosystem[x][y][z]['organisms'] + 1
+                (x, y, z) = coordinates(location)
+            world.ecosystem[x][y][z]['organisms'] = world.ecosystem[x][y][z]['organisms'] + 1
             individual.status['location'] = location
 
-def deploy_3(sim_parameters, Populations, pop_name, World):
+
+def deploy_3(sim_parameters, populations, pop_name, world):
     '''
     Organism deployment scheme 3 - Even deployment scheme. This is called 
     when "deployment_code" in simulation parameters = 3. In this scheme, 
@@ -371,27 +377,27 @@ def deploy_3(sim_parameters, Populations, pop_name, World):
     parameters.
     
     @param sim_parameters: simulation parameters dictionary (see Examples)
-    @param Populations: dictionary of population objects
+    @param populations: dictionary of population objects
     @param pop_name: population name
-    @param World: dose_world.World object
+    @param world: dose_world.World object
     @return: none
     '''
+
     position = sim_parameters["population_names"].index(pop_name)
-    locations = [location 
-        for location in sim_parameters["population_locations"][position]]
+    locations = [location for location in sim_parameters["population_locations"][position]]
     iterator = 0
     for i in range(sim_parameters["population_size"]):
-        individual = Populations[pop_name].agents[i]
+        individual = populations[pop_name].agents[i]
         location = locations[iterator]
-        (x,y,z) = coordinates(location)
-        World.ecosystem[x][y][z]['organisms'] = \
-            World.ecosystem[x][y][z]['organisms'] + 1
+        (x, y, z) = coordinates(location)
+        world.ecosystem[x][y][z]['organisms'] += 1
         individual.status['location'] = location
         iterator += 1
         if iterator == len(locations):
             iterator = 0
 
-def deploy_4(sim_parameters, Populations, pop_name, World):
+
+def deploy_4(sim_parameters, populations, pop_name, world):
     '''
     Organism deployment scheme 4 - Centralized deployment scheme. This is 
     called when "deployment_code" in simulation parameters = 4. In this 
@@ -404,34 +410,33 @@ def deploy_4(sim_parameters, Populations, pop_name, World):
     onto adjacent cells.
     
     @param sim_parameters: simulation parameters dictionary (see Examples)
-    @param Populations: dictionary of population objects
+    @param populations: dictionary of population objects
     @param pop_name: population name
-    @param World: dose_world.World object
+    @param world: dose_world.World object
     @return: none
     '''
     position = sim_parameters["population_names"].index(pop_name)
-    locations = [location 
-        for location in sim_parameters["population_locations"][position]]
+    locations = [location for location in sim_parameters["population_locations"][position]]
     adj_cells = adjacent_cells(sim_parameters, locations[0])
-    for group in range((sim_parameters["population_size"] / \
-                         sim_parameters["eco_cell_capacity"]) + 1):
+    for group in range((sim_parameters["population_size"] / sim_parameters["eco_cell_capacity"]) + 1):
         start = sim_parameters["eco_cell_capacity"] * group
         end = start + sim_parameters["eco_cell_capacity"]
-        for x in range(start,end):
-            if x == sim_parameters["population_size"]: break
-            individual = Populations[pop_name].agents[x]
+        for x in range(start, end):
+            if x == sim_parameters["population_size"]:
+                break
+            individual = populations[pop_name].agents[x]
             if x > (sim_parameters["eco_cell_capacity"] - 1):
                 location = random.choice(adj_cells)
-                (x,y,z) = coordinates(location)
-                while World.ecosystem[x][y][z]['organisms'] > \
-                    sim_parameters["eco_cell_capacity"]:
+                (x, y, z) = coordinates(location)
+                while world.ecosystem[x][y][z]['organisms'] > sim_parameters["eco_cell_capacity"]:
                     location = random.choice(adj_cells)
-                    (x,y,z) = coordinates(random.choice(adj_cells))
-            (x,y,z) = coordinates(location)
-            World.ecosystem[x][y][z]['organisms'] += 1
+                    (x, y, z) = coordinates(random.choice(adj_cells))
+            (x, y, z) = coordinates(location)
+            world.ecosystem[x][y][z]['organisms'] += 1
             individual.status['location'] = location
 
-def interpret_chromosome(sim_parameters, Populations, pop_name, World):
+
+def interpret_chromosome(sim_parameters, populations, pop_name, world):
     '''
     Function to call Ragaraja interpreter to express / execute the genome 
     for each organism in a population. The Turing tape (array) after 
@@ -443,50 +448,47 @@ def interpret_chromosome(sim_parameters, Populations, pop_name, World):
     wastes respectively.
     
     @param sim_parameters: simulation parameters dictionary (see Examples)
-    @param Populations: dictionary of population objects
+    @param populations: dictionary of population objects
     @param pop_name: population name
-    @param World: dose_world.World object
+    @param world: dose_world.World object
     @return: none
     '''
 
     chromosome = None
 
-    for i in range(len(Populations[pop_name].agents)):
+    for i in range(len(populations[pop_name].agents)):
 
-        individual = Populations[pop_name].agents[i]
+        individual = populations[pop_name].agents[i]
         location = individual.status['location']
-        (x,y,z) = coordinates(location)
+        (x, y, z) = coordinates(location)
 
         if sim_parameters["clean_cell"]:
             chromosome = [0] * sim_parameters["max_tape_length"]
         else:
-            chromosome = Populations[pop_name].agents[i].status['blood']
-            if chromosome == None:
+            chromosome = populations[pop_name].agents[i].status['blood']
+            if chromosome is None:
                 chromosome = [0] * sim_parameters["max_tape_length"]
 
         for chromosome_count in range(len(individual.genome)):
-            inputdata = World.ecosystem[x][y][z]['local_input']
-            output = World.ecosystem[x][y][z]['local_output']
+            inputdata = world.ecosystem[x][y][z]['local_input']
+            output = world.ecosystem[x][y][z]['local_output']
             source = ''.join(individual.genome[chromosome_count].sequence)
-            chromosome = Populations[pop_name].agents[i].status['blood']
+            chromosome = populations[pop_name].agents[i].status['blood']
             try:
                 (chromosome, apointer, inputdata, output, source, spointer) = \
-                register_machine.interpret(source, ragaraja.ragaraja, 3,
-                                           inputdata, chromosome,
-                                           sim_parameters["max_tape_length"],
-                                           sim_parameters["max_codon"])
+                    register_machine.interpret(source, ragaraja.ragaraja, 3, inputdata, chromosome,
+                                               sim_parameters["max_tape_length"], sim_parameters["max_codon"])
             except Exception as e: 
-                error_msg = '|'.join(['Error at Chromosome_' + \
-                    str(chromosome_count), str(e)])
-                Populations[pop_name].agents[i]. \
-                    status['chromosome_error'] = error_msg
-                Populations[pop_name].agents[i].status['blood'] = chromosome
+                error_msg = '|'.join(['Error at Chromosome_' + str(chromosome_count), str(e)])
+                populations[pop_name].agents[i].status['chromosome_error'] = error_msg
+                populations[pop_name].agents[i].status['blood'] = chromosome
 
-            Populations[pop_name].agents[i].status['blood'] = chromosome
-            World.ecosystem[x][y][z]['temporary_input'] = inputdata
-            World.ecosystem[x][y][z]['temporary_output'] = output
+            populations[pop_name].agents[i].status['blood'] = chromosome
+            world.ecosystem[x][y][z]['temporary_input'] = inputdata
+            world.ecosystem[x][y][z]['temporary_output'] = output
 
-def step(Populations, pop_name, sim_functions):
+
+def step(populations, pop_name, sim_functions):
     '''
     Performs a generational step for a population
         - Prepopulation control
@@ -498,69 +500,66 @@ def step(Populations, pop_name, sim_functions):
         - After mating fitness measurement
         - Generate a textual report for the current generation
     
-    @param Populations: dictionary of population objects
+    @param populations: dictionary of population objects
     @param pop_name: population name
     @param sim_functions: implemented simulation functions 
     (see dose.dose_functions)
     @return: report as a string
     '''
-    if Populations[pop_name].generation > 0:
-        sim_functions.prepopulation_control(Populations, pop_name)
-    for organism in Populations[pop_name].agents:
+    if populations[pop_name].generation > 0:
+        sim_functions.prepopulation_control(populations, pop_name)
+    for organism in populations[pop_name].agents:
         sim_functions.mutation_scheme(organism)
-    sim_functions.fitness(Populations, pop_name)
-    sim_functions.mating(Populations, pop_name)
-    sim_functions.postpopulation_control(Populations, pop_name)
-    sim_functions.generation_events(Populations, pop_name)
-    Populations[pop_name].generation = Populations[pop_name].generation + 1
-    sim_functions.fitness(Populations, pop_name)
-    return sim_functions.population_report(Populations, pop_name)
+    sim_functions.fitness(populations, pop_name)
+    sim_functions.mating(populations, pop_name)
+    sim_functions.postpopulation_control(populations, pop_name)
+    sim_functions.generation_events(populations, pop_name)
+    populations[pop_name].generation = populations[pop_name].generation + 1
+    sim_functions.fitness(populations, pop_name)
+    return sim_functions.population_report(populations, pop_name)
 
-def report_generation(sim_parameters, Populations, pop_name, 
-                      sim_functions, generation_count):
+
+def report_generation(sim_parameters, populations, pop_name, sim_functions, generation_count):
     '''
     Performs a generational step (using step function) for a population 
     and writes out the resulting report into results text file.
     
     @param sim_parameters: simulation parameters dictionary (see Examples)
-    @param Populations: dictionary of population objects
+    @param populations: dictionary of population objects
     @param pop_name: population name
     @param sim_functions: implemented simulation functions (see 
     dose.dose_functions)
     @param generation_count: current generation count for reporting
     @return: none
     '''
-    report = step(Populations, pop_name, sim_functions)
+    report = step(populations, pop_name, sim_functions)
     if generation_count % int(sim_parameters["fossilized_frequency"]) == 0:
-        file = '%s%s_%s_' % (sim_parameters["directory"],
-                             sim_parameters["simulation_name"], pop_name)
-        freeze_population(file, sim_parameters["fossilized_ratio"], 
-                          Populations, pop_name)
+        file = '%s%s_%s_' % (sim_parameters["directory"], sim_parameters["simulation_name"], pop_name)
+        freeze_population(file, sim_parameters["fossilized_ratio"], populations, pop_name)
     if generation_count % int(sim_parameters["print_frequency"]) == 0:
-        f = open(('%s%s_%s.result.txt' % (sim_parameters["directory"],
-                                          sim_parameters["simulation_name"], 
+        f = open(('%s%s_%s.result.txt' % (sim_parameters["directory"], sim_parameters["simulation_name"],
                                           pop_name)), 'a')
         dtstamp = str(datetime.utcnow())
-        f.write('\n'.join(['\n' + dtstamp, 'GENERATION: ' + \
-                           str(generation_count), str(report)]))
+        f.write('\n'.join(['\n' + dtstamp, 'GENERATION: ' + str(generation_count), str(report)]))
         f.write('\n')
         f.close
 
-def bury_world(sim_parameters, World, generation_count):
+
+def bury_world(sim_parameters, world, generation_count):
     '''
     Function to bury entire world into a file.
     
     @param sim_parameters: simulation parameters dictionary (see Examples)
-    @param World: dose_world.World object
+    @param world: dose_world.World object
     @param generation_count: current generation count for file name generation
     '''
 
-    filename = '%s%s_gen%s.eco' % (sim_parameters["directory"],
-                                  sim_parameters["simulation_name"],
-                                  str(generation_count))
+    filename = '%s%s_gen%s.eco' % (sim_parameters["directory"], sim_parameters["simulation_name"],
+                                   str(generation_count))
     f = open(filename, 'wb')
-    pickle.dump(World, f)
+    pickle.dump(world, f)
     f.close()
+
 
 def excavate_world(eco_file):
     '''
@@ -572,7 +571,8 @@ def excavate_world(eco_file):
     f = open(eco_file, 'rb')
     return pickle.load(f)
 
-def freeze_population(file, proportion, Populations, pop_name):
+
+def freeze_population(file, proportion, populations, pop_name):
     '''
     Function to freeze part or whole of the population into a file. If 
     the number of organisms is less than 101, the entire population will 
@@ -580,23 +580,22 @@ def freeze_population(file, proportion, Populations, pop_name):
     
     @param file: file name prefix
     @param proportion: proportion of the population to freeze
-    @param Populations: dictionary of population objects
+    @param populations: dictionary of population objects
     @param pop_name: population name to freeze
     '''
     if proportion > 1.0: proportion = 1.0
-    agents = Populations[pop_name].agents
+    agents = populations[pop_name].agents
     if len(agents) < 101 or len(agents) * proportion < 101:
-        sample = deepcopy(Populations[pop_name])
+        sample = deepcopy(populations[pop_name])
     else:
-        new_agents = [agents[random.randint(0, len(agents) - 1)]
-                      for x in range(int(len(agents) * proportion))]
-        sample = deepcopy(Populations[pop_name])
+        new_agents = [agents[random.randint(0, len(agents) - 1)] for x in range(int(len(agents) * proportion))]
+        sample = deepcopy(populations[pop_name])
         sample.agents = new_agents
-    name = ''.join([file, 'pop', str(Populations[pop_name].generation), 
-                    '_', str(len(sample.agents)), '.gap'])
+    name = ''.join([file, 'pop', str(populations[pop_name].generation), '_', str(len(sample.agents)), '.gap'])
     f = open(name, 'wb')
     pickle.dump(sample, f)
     f.close()
+
 
 def revive_population(gap_file):
     '''
@@ -609,6 +608,7 @@ def revive_population(gap_file):
     f = open(gap_file, 'rb')
     return pickle.load(f)
 
+
 def write_parameters(sim_parameters, pop_name):
     '''
     Function to write simulation parameters into results text file as 
@@ -618,26 +618,18 @@ def write_parameters(sim_parameters, pop_name):
     @param pop_name: population name
     @return: none
     '''
-    f = open(('%s%s_%s.result.txt' % (sim_parameters["directory"],
-                                      sim_parameters["simulation_name"],
-                                      pop_name)), 'a')
-    f.write("""SIMULATION: %s
-
-----------------------------------------------------------------------
-""" % sim_parameters["simulation_name"])
-    if ('database_source' in sim_parameters) or \
-        ('sim_folder' in sim_parameters):
+    f = open(('%s%s_%s.result.txt' % (sim_parameters["directory"], sim_parameters["simulation_name"], pop_name)), 'a')
+    f.write("SIMULATION: %s \n" + ("-" * 70) % sim_parameters["simulation_name"])
+    if ('database_source' in sim_parameters) or  ('sim_folder' in sim_parameters):
         f.write("SIMULATION REVIVAL STARTED: %s\n\n" % \
                 sim_parameters["starting_time"])
     else:
-        f.write("SIMULATION STARTED: %s\n\n" % \
-                sim_parameters["starting_time"])
+        f.write("SIMULATION STARTED: %s\n\n" % sim_parameters["starting_time"])
     for key in sim_parameters:
         if key not in ('deployment_scheme', 'directory', 'sim_folder'):
             f.write("%s : %s\n" % (key, sim_parameters[key]))
-    f.write("""\n\nREPORT
-----------------------------------------------------------------------
-""")
+    f.write("\n\nREPORT\n" + + ("-" * 70))
+
 
 def close_results(sim_parameters, pop_name):
     '''
@@ -650,7 +642,5 @@ def close_results(sim_parameters, pop_name):
     f = open(('%s%s_%s.result.txt' % (sim_parameters["directory"],
                                       sim_parameters["simulation_name"], 
                                       pop_name)), 'a')
-    f.write('''
-----------------------------------------------------------------------
-SIMULATION ENDED: ''' + str(datetime.utcnow()))
+    f.write("-" * 70 + "\nSIMULATION ENDED: " + str(datetime.utcnow()))
     f.close()
